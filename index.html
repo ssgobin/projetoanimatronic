@@ -128,7 +128,7 @@
   <h1 id="statusMQTT">Status MQTT: Desconectado</h1>
 
   <h2>📸 Câmera Assombrada</h2>
-  <!--<img id="camera" src="http://192.168.64.69/camera.jpg" alt="Imagem da câmera" width="320" height="240">-->
+  <img id="camera" src="http://192.168.0.100/stream" alt="Stream da Câmera">
 <br>
   <label for="pasta">📁 Pasta:</label>
   <input type="number" id="pasta" min="1" max="99" value="2" />
@@ -165,14 +165,6 @@
   <button onclick="ativarPreset('trilha')">🎃 Trilha do Terror</button>-->
 
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
-  <script>
-    function atualizarCamera() {
-      const ipCamera = "192.168.64.69";
-      //img.src = `http://${ipCamera}/camera.jpg?rand=${Math.random()}`;
-    }
-
-    setInterval(atualizarCamera, 1000); // Atualiza a cada 1 segundo
-  </script>
 
 
   <script>
