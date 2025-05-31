@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <title>👻 Controle MP3 Assombrado (MQTT)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Nosifer&family=Rubik+Dirt&display=swap" rel="stylesheet">
+  <style>
+    body {
+        margin: 0;
+        padding: 0;
+        font-family: 'Rubik Dirt', cursive;
+        background: #0c0c0c url('https://images.unsplash.com/photo-1508087624148-38103f8e3029?auto=format&fit=crop&w=1740&q=80') no-repeat center center fixed;
+        background-size: cover;
+        color: #ff0000;
+        text-align: center;
+        padding-top: 50px;
+    }
+
+
+    h1 {
+      font-family: 'Nosifer', cursive;
+      font-size: 48px;
+      color: #ff0000;
+      text-shadow: 2px 2px 10px #ff0000;
+      margin-bottom: 40px;
+      position: relative;
+    }
+
+    h1::after {
+      content: "";
+      position: absolute;
+      width: 100%;
+      height: 20px;
+      background: url('https://i.imgur.com/GD2b8rZ.gif') repeat-x;
+      background-size: contain;
+      bottom: -30px;
+      left: 0;
+    }
+
+    button {
+      margin: 10px;
+      padding: 15px 30px;
+      font-size: 18px;
+      background-color: #222;
+      color: #ff0000;
+      border: 2px solid #ff0000;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    button:hover {
+      transform: scale(1.05);
+      box-shadow: 0 0 10px #ff0000;
+      background-color: #330000;
+    }
+
+    input[type="range"] {
+      width: 300px;
+    }
+
+    #info {
+      margin-top: 20px;
+      font-size: 22px;
+      color: #ff4444;
+    }
+
+    label {
+      font-size: 20px;
+      color: #ff5555;
+    }
+
+    input[type="number"] {
+      padding: 5px;
+      font-size: 18px;
+      border: 2px solid #ff0000;
+      background-color: #111;
+      color: #fff;
+      border-radius: 5px;
+    }
+
+    #volumeLabel {
+      font-weight: bold;
+      color: #ff0000;
+    }
+
+    h2 {
+      color: #ff2222;
+      margin-top: 60px;
+      font-family: 'Nosifer', cursive;
+    }
+
+    /* Animação de sangue pingando */
+    @keyframes blood-drip {
+      0% { transform: translateY(-100px) rotate(0deg); opacity: 1; }
+      100% { transform: translateY(600px) rotate(720deg); opacity: 0; }
+    }
+
+    .blood-drop {
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      background: radial-gradient(#ff0000, #990000);
+      border-radius: 50%;
+      animation: blood-drip 5s infinite;
+      opacity: 0.7;
+      z-index: -1;
+    }
+
+    /* Gotas aleatórias */
+    .blood-drop:nth-child(1) { left: 5%; animation-delay: 0s; }
+    .blood-drop:nth-child(2) { left: 25%; animation-delay: 2s; }
+    .blood-drop:nth-child(3) { left: 50%; animation-delay: 1s; }
+    .blood-drop:nth-child(4) { left: 75%; animation-delay: 3s; }
+    .blood-drop:nth-child(5) { left: 90%; animation-delay: 4s; }
+  </style>
+</head>
+<body>
+  <h1>💀 Controle de Músicas Assombradas 💀</h1>
+
+  <!-- Gotas de sangue animadas -->
+  <div class="blood-drop"></div>
+  <div class="blood-drop"></div>
+  <div class="blood-drop"></div>
+  <div class="blood-drop"></div>
+  <div class="blood-drop"></div>
+
+  <h1 id="statusMQTT">Status MQTT: Desconectado</h1>
+
+  <h2>📸 Câmera Assombrada</h2>
+  <!--<img id="camera" src="http://192.168.64.69/camera.jpg" alt="Imagem da câmera" width="320" height="240">-->
+<br>
+  <label for="pasta">📁 Pasta:</label>
+  <input type="number" id="pasta" min="1" max="99" value="2" />
+  <br><br>
+
+  <button onclick="musicaAnterior()">👈 Música Anterior</button>
+  <button onclick="tocarMusicaAtual()">▶️ Tocar</button>
+  <button onclick="pausarMusica()">⛔ Parar</button>
+  <button onclick="proximaMusica()">👉 Próxima Música</button>
+  <br>
+  <button onclick="toggleLoop()" id="btnLoop">🔁 Loop: Desligado</button>
+  <button onclick="toggleAuto()" id="btnAuto">📀 Auto: Desligado</button>
+
+  <div id="info">
+    <p>🎃 Pasta Atual: <span id="pastaAtual">2</span></p>
+    <p>👻 Música Atual: <span id="musicaAtual">1</span></p>
+  </div>
+
+  <label for="volume">🔊 Volume:</label>
+  <input type="range" id="volume" min="0" max="30" value="22" onchange="ajustarVolume(this.value)" />
+  <span id="volumeLabel">22</span>
+
+  <h2>☠️ Controle do Servo ☠️</h2>
+  <button id="servoBtn">🌀 Ativar Giro</button>
+  <br>
+  <br>
+  <button id="vigilanciaBtn">🔁 Ligar Vigilancia</button>
+
+  <!--<h2>🎬 Presets</h2>
+  <button onclick="ativarPreset('assombracao')">👻 Assombração Súbita</button>
+  <button onclick="ativarPreset('lamento')">💀 Lamento do Além</button>
+  <button onclick="ativarPreset('invocacao')">🪦 Invocação Final</button>
+  <button onclick="ativarPreset('sangue')">🩸 Sangue e Gritos</button>
+  <button onclick="ativarPreset('trilha')">🎃 Trilha do Terror</button>-->
+
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <script>
+    function atualizarCamera() {
+      const ipCamera = "192.168.64.69";
+      //img.src = `http://${ipCamera}/camera.jpg?rand=${Math.random()}`;
+    }
+
+    setInterval(atualizarCamera, 1000); // Atualiza a cada 1 segundo
+  </script>
+
+
+  <script>
+    const broker = 'wss://test.mosquitto.org:8081/mqtt';
+    const client = mqtt.connect(broker);
+
+    let pasta = 2;
+    let musica = 1;
+    const maxMusicas = 30;
+
+    function atualizarDisplay() {
+      document.getElementById('pastaAtual').innerText = pasta;
+      document.getElementById('musicaAtual').innerText = musica;
+      document.getElementById('pasta').value = pasta;
+    }
+
+    function mudarAnguloServo(valor) {
+      document.getElementById('servoValue').innerText = `${valor}°`;
+      client.publish('servo/angle', valor.toString());
+      console.log(`[MQTT] Ângulo do servo ajustado para: ${valor}°`);
+    }
+
+    client.on('connect', () => {
+      console.log('Conectado ao broker MQTT');
+      document.getElementById('statusMQTT').innerText = 'STATUS MQTT: Conectado';
+      client.subscribe('assombrado/camera');
+    });
+
+    function tocarMusicaAtual() {
+      const topico = 'dfplayer/music/play';
+      const mensagem = `${pasta},${musica}`;
+      client.publish(topico, mensagem);
+      console.log(`[MQTT] Tocando música: Pasta ${pasta}, Música ${musica}`);
+      atualizarDisplay();
+    }
+
+    function pausarMusica() {
+      client.publish('dfplayer/music/stop', 'stop');
+      console.log('[MQTT] Música parada');
+    }
+
+    function ajustarVolume(valor) {
+      document.getElementById('volumeLabel').innerText = valor;
+      client.publish('dfplayer/volume/set', valor.toString());
+      console.log(`[MQTT] Volume ajustado para: ${valor}`);
+    }
+
+    function proximaMusica() {
+      musica++;
+      if (musica > maxMusicas) musica = 1;
+      console.log('[Interface] Próxima música');
+      tocarMusicaAtual();
+    }
+
+    function musicaAnterior() {
+      musica--;
+      if (musica < 1) musica = maxMusicas;
+      console.log('[Interface] Música anterior');
+      tocarMusicaAtual();
+    }
+
+    let loopAtivado = false;
+
+    function toggleLoop() {
+      loopAtivado = !loopAtivado;
+      const status = loopAtivado ? 'on' : 'off';
+      client.publish('dfplayer/music/loop', status);
+      document.getElementById('btnLoop').innerText = `🔁 Loop: ${loopAtivado ? 'Ligado' : 'Desligado'}`;
+      console.log(`[MQTT] Loop ${loopAtivado ? 'ativado' : 'desativado'}`);
+    }
+
+    let autoAtivado = false;
+
+    function toggleAuto() {
+      autoAtivado = !autoAtivado;
+      const status = autoAtivado ? 'on' : 'off';
+      client.publish('dfplayer/music/auto', status);
+      document.getElementById('btnAuto').innerText = `📀 Auto: ${autoAtivado ? 'Ligado' : 'Desligado'}`;
+      console.log(`[MQTT] Auto ${autoAtivado ? 'ativado' : 'desativado'}`);
+    }
+
+    document.getElementById('pasta').addEventListener('change', (e) => {
+      let novaPasta = parseInt(e.target.value);
+      if (novaPasta >= 1 && novaPasta <= 99) {
+        pasta = novaPasta;
+        musica = 1;
+        atualizarDisplay();
+      }
+    });
+
+    function ligarServo() {
+      client.publish('servo/on', 'on');
+      console.log('[MQTT] Servo ligado');
+    }
+
+    function desligarServo() {
+      client.publish('servo/off', 'off');
+      console.log('[MQTT] Servo desligado');
+    }
+
+    function ligarVigilancia() {
+      client.publish('servo/vigilancia', 'on');
+      console.log('[MQTT] Vigilancia ligado');
+    }
+
+    function desligarVigilancia() {
+      client.publish('servo/vigilancia', 'off');
+      console.log('[MQTT] Vigilancia desligado');
+    }
+
+    function ativarPreset(nome) {
+      client.publish('dfplayer/preset', nome);
+      console.log(`[MQTT] Preset ativado: ${nome}`);
+    }
+
+    pararPreset = () => {
+      client.publish('dfplayer/preset', 'off');
+      console.log('[MQTT] Preset parado');
+    }
+
+    atualizarDisplay();
+
+  let servoAtivo = false;
+  const btn = document.getElementById("servoBtn");
+
+  btn.addEventListener("click", () => {
+    servoAtivo = !servoAtivo;
+    btn.innerText = servoAtivo ? "🌀 Desativar Giro" : "🌀 Ativar Giro";
+
+    const topic = servoAtivo ? "servo/on" : "servo/off";
+    const message = servoAtivo ? "on" : "off";
+
+    client.publish(topic, message);
+  });
+
+  let vigilanciaAtiva = false;
+  const btnVigilancia = document.getElementById("vigilanciaBtn");
+
+  btnVigilancia.addEventListener("click", () => {
+    vigilanciaAtiva = !vigilanciaAtiva;
+    btnVigilancia.innerText = vigilanciaAtiva ? "🔁 Desativar Vigilancia" : "🔁 Ativar Vigilancia";
+
+    const topic = vigilanciaAtiva ? "servo/vigilancia" : "servo/vigilancia";
+    const message = vigilanciaAtiva ? "on" : "off";
+
+    client.publish(topic, message);
+  });
+  </script>
+</body>
+</html>
