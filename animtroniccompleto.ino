@@ -1,19 +1,20 @@
-#include <ESP8266WiFi.h>
+#include <WiFi.h>
 #include <PubSubClient.h>
-#include "SoftwareSerial.h"
 #include "DFRobotDFPlayerMini.h"
-#include <Servo.h>
+#include <ESP32Servo.h>
 
-const char* ssid = "pitbull baliza";
-const char* password = "19991010";
+// Config WiFi e MQTT
+const char* ssid = "iPhone de Kauan";
+const char* password = "senhadificildapega";
 const char* mqtt_server = "test.mosquitto.org";
 
-#define pinRx D2
-#define pinTx D3
-#define SERVO_PIN D5
+// Definição de pinos
+#define pinRx 16   // RX2 (GPIO16) - Você pode trocar se quiser
+#define pinTx 17   // TX2 (GPIO17)
+#define SERVO_PIN 18 // GPIO18
 
 Servo motorServo;
-SoftwareSerial playerMP3Serial(pinRx, pinTx);
+HardwareSerial playerMP3Serial(2);  // Usando Serial2 do ESP32
 DFRobotDFPlayerMini playerMP3;
 
 WiFiClient espClient;
@@ -24,32 +25,27 @@ const char* topicVolume = "dfplayer/volume/set";
 const char* topicStop = "dfplayer/music/stop";
 const char* topicLoop = "dfplayer/music/loop";
 const char* topicAuto = "dfplayer/music/auto";
-
 const char* topicServoOn = "servo/on";
 const char* topicServoOff = "servo/off";
 const char* topicVigilancia = "servo/vigilancia";
-
 const char* topicPreset = "dfplayer/preset";
 const char* topicPresetStop = "dfplayer/preset/stop";
-
 
 bool servoAtivo = false;
 unsigned long ultimoMovimento = 0;
 int estadoServo = 0;
-
 int pasta = 1;
 int musica = 1;
 int estadoAnterior = -1;
-
 bool repetirMusica = false;
 bool modoAutomatico = false;
-
 bool presetExecutando = false;
 bool interromperPreset = false;
-
 bool modoVigilancia = false;
-
 String clientId;
+static unsigned long tempoInicioGiro = 0;
+static bool girandoDireita = true;
+static bool executandoGiro = false;
 
 void moverServo(int anguloInicial, int anguloFinal, int tempoMS, int repeticoes) {
   for (int r = 0; r < repeticoes && !interromperPreset; r++) {
@@ -66,14 +62,12 @@ void moverServo(int anguloInicial, int anguloFinal, int tempoMS, int repeticoes)
 
 void moverServoDuranteMusica(int anguloInicial, int anguloFinal, int tempoMS) {
   if (!motorServo.attached()) motorServo.attach(SERVO_PIN);
-  
   bool subindo = true;
   int angulo = anguloInicial;
-  
+
   while (playerMP3.readState() != 512 && !interromperPreset) {
     motorServo.write(angulo);
     delay(tempoMS);
-    
     if (subindo) {
       angulo++;
       if (angulo >= anguloFinal) subindo = false;
@@ -82,20 +76,14 @@ void moverServoDuranteMusica(int anguloInicial, int anguloFinal, int tempoMS) {
       if (angulo <= anguloInicial) subindo = true;
     }
   }
-
   motorServo.detach();
 }
 
 void callback(char* topic, byte* payload, unsigned int length) {
   String msg;
-  for (unsigned int i = 0; i < length; i++) {
-    msg += (char)payload[i];
-  }
+  for (unsigned int i = 0; i < length; i++) msg += (char)payload[i];
 
-  Serial.print("[MQTT] Tópico recebido: ");
-  Serial.print(topic);
-  Serial.print(" | Mensagem: ");
-  Serial.println(msg);
+  Serial.printf("[MQTT] Tópico: %s | Mensagem: %s\n", topic, msg.c_str());
 
   if (String(topic) == topicPlay) {
     int idx = msg.indexOf(',');
@@ -104,60 +92,40 @@ void callback(char* topic, byte* payload, unsigned int length) {
       musica = msg.substring(idx + 1).toInt();
       playerMP3.playFolder(pasta, musica);
     }
-  } 
-  else if (String(topic) == topicVolume) {
+  } else if (String(topic) == topicVolume) {
     playerMP3.volume(msg.toInt());
-  } 
-  else if (String(topic) == topicStop) {
+  } else if (String(topic) == topicStop) {
     playerMP3.stop();
-  }
-  else if (String(topic) == topicLoop) {
+  } else if (String(topic) == topicLoop) {
     repetirMusica = msg == "on";
-    Serial.print("Loop está ");
-    Serial.println(repetirMusica ? "ativado" : "desativado");
-  }
-  else if (String(topic) == topicAuto) {
+  } else if (String(topic) == topicAuto) {
     modoAutomatico = msg == "on";
-    Serial.print("Modo automático está ");
-    Serial.println(modoAutomatico ? "ativado" : "desativado");
-  }
-  else if (String(topic) == topicServoOn) {
+  } else if (String(topic) == topicServoOn) {
     servoAtivo = true;
-    Serial.println("Servo iniciado (modo girar)");
-  } 
-  else if (String(topic) == topicServoOff) {
+  } else if (String(topic) == topicServoOff) {
     servoAtivo = false;
     motorServo.detach();
-    Serial.println("Servo parado");
-  }
-  else if (msg == "stop") {
+  } else if (msg == "stop") {
     interromperPreset = true;
     playerMP3.stop();
     motorServo.detach();
     presetExecutando = false;
-    Serial.println("Preset interrompido.");
-  }
-  else if (String(topic) == topicVigilancia) {
-    if (msg == "on") {
-      modoVigilancia = true;
+  } else if (String(topic) == topicVigilancia) {
+    modoVigilancia = (msg == "on");
+    if (modoVigilancia) {
       servoAtivo = false;
       if (!motorServo.attached()) motorServo.attach(SERVO_PIN);
-      Serial.println("Modo vigilância ativado");
     } else {
-      modoVigilancia = false;
       motorServo.detach();
-      Serial.println("Modo vigilância desativado");
     }
   }
-
-
 }
 
 void reconnect() {
   while (!client.connected()) {
     Serial.print("Conectando ao MQTT...");
     if (client.connect(clientId.c_str())) {
-      Serial.println("conectado");
+      Serial.println("Conectado");
       playerMP3.playFolder(3, 1);
       client.subscribe(topicPlay);
       client.subscribe(topicVolume);
@@ -170,23 +138,15 @@ void reconnect() {
       client.subscribe(topicPresetStop);
       client.subscribe(topicVigilancia);
     } else {
-      Serial.print("Falha, rc=");
-      Serial.print(client.state());
+      Serial.printf("Falha, rc=%d. Tentando novamente em 5s\n", client.state());
       delay(5000);
     }
   }
 }
 
 void setup() {
-  Serial.begin(9600);
-  playerMP3Serial.begin(9600);
-  
-  if (!playerMP3.begin(playerMP3Serial)) {
-    Serial.println("Erro ao iniciar DFPlayer!");
-    while (true) delay(0);
-  }
-  playerMP3.volume(35);
-  playerMP3.playFolder(3, 2);
+  Serial.begin(115200);
+  playerMP3Serial.begin(9600, SERIAL_8N1, pinRx, pinTx);
 
   WiFi.begin(ssid, password);
   Serial.print("Conectando ao WiFi");
@@ -195,93 +155,109 @@ void setup() {
     Serial.print(".");
   }
   Serial.println("\nWiFi conectado!");
-  playerMP3.playFolder(3, 3);
 
+  if (!playerMP3.begin(playerMP3Serial)) {
+    Serial.println("Erro ao iniciar DFPlayer! Reiniciando ESP em 5s...");
+    delay(5000);
+    ESP.restart();
+  }
+
+  playerMP3.volume(35);
+  playerMP3.playFolder(3, 2);
+  playerMP3.playFolder(3, 3);
 
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
-
-  clientId = "ESP8266Client-" + String(ESP.getChipId());
+  clientId = "ESP32Client-" + String((uint32_t)ESP.getEfuseMac(), HEX);
 
   motorServo.attach(SERVO_PIN);
   motorServo.write(90);
 }
 
 void loop() {
-  if (!client.connected()) {
-    reconnect();
-  }
+  if (!client.connected()) reconnect();
   client.loop();
 
   static unsigned long ultimoCheck = 0;
-if (millis() - ultimoCheck > 1000) {
-  ultimoCheck = millis();
-  
-  int estadoAtual = playerMP3.readState();
+  if (millis() - ultimoCheck > 1000) {
+    ultimoCheck = millis();
+    int estadoAtual = playerMP3.readState();
 
-  if (estadoAnterior != 512 && estadoAtual == 512) {
-    // Transição de tocando para parado
-    if (repetirMusica) {
-      playerMP3.playFolder(pasta, musica);
-    } else if (modoAutomatico) {
-      musica++;
-      if (musica > 30) musica = 1; // ajustar de acordo com seu limite
-      playerMP3.playFolder(pasta, musica);
-      Serial.print("Tocando próxima música automática: ");
-      Serial.println(musica);
+    if (estadoAnterior != 512 && estadoAtual == 512) {
+      if (repetirMusica) {
+        playerMP3.playFolder(pasta, musica);
+      } else if (modoAutomatico) {
+        musica++;
+        if (musica > 30) musica = 1;
+        playerMP3.playFolder(pasta, musica);
+      }
     }
+    estadoAnterior = estadoAtual;
   }
-
-  estadoAnterior = estadoAtual;
-}
 
   if (servoAtivo) {
-    unsigned long agora = millis();
-    if (agora - ultimoMovimento >= 500) { // alterna a cada 0.5s
-      if (!motorServo.attached()) {
-        motorServo.attach(SERVO_PIN);
-      }
+  if (!executandoGiro) {
+    // Inicia o próximo giro
+    tempoInicioGiro = millis();
+    executandoGiro = true;
 
-      if (estadoServo == 0) {
-        motorServo.write(1);
-        estadoServo = 1;
-      } else {
-        motorServo.write(0);
-        estadoServo = 0;
-      }
-      ultimoMovimento = agora;
+    if (girandoDireita) {
+      motorServo.write(180);  // Gira para direita
+      Serial.println("Girando 360 para DIREITA");
+    } else {
+      motorServo.write(0);    // Gira para esquerda
+      Serial.println("Girando 360 para ESQUERDA");
+    }
+  } else {
+    // Verifica se já passou o tempo de um giro de 360°
+    unsigned long tempoGiro = 2000;  // Ajuste esse valor para o tempo que seu servo leva pra fazer 360 graus (em milissegundos)
+
+    if (millis() - tempoInicioGiro >= tempoGiro) {
+      motorServo.write(90);  // Para o motor
+      Serial.println("Parando servo...");
+
+      // Alterna a direção pro próximo ciclo
+      girandoDireita = !girandoDireita;
+      executandoGiro = false;
+
+      delay(500);  // Pequena pausa entre os giros (se quiser)
     }
   }
+} else {
+  motorServo.write(90);  // Se o modo estiver desativado, garante que o servo pare
+  executandoGiro = false;
+}
 
-  static unsigned long tempoAnterior = 0;
-  static float anguloAtualF = 60;
-  static bool indoDireita = true;
+static unsigned long tempoAnterior = 0;
+static int anguloAtual = 0;
+static bool indoDireita = true;
 
-  if (modoVigilancia) {
-    unsigned long agora = millis();
-    if (!motorServo.attached()) motorServo.attach(SERVO_PIN);
+if (modoVigilancia) {
+  unsigned long agora = millis();
+  if (!motorServo.attached()) motorServo.attach(SERVO_PIN);
 
-    float tempoTotal = random(1000, 5001);
-    float passos = 60;
-    float passoTempo = tempoTotal / passos;
-    float passoAngulo = 1.0;
+  int passoAngulo = 2; // tamanho do passo (quanto maior, mais rápido gira)
+  int intervaloTempo = 20; // tempo entre cada passo (em ms)
 
-    if (agora - tempoAnterior >= passoTempo) {
-      tempoAnterior = agora;
-      if (indoDireita) {
-        anguloAtualF += passoAngulo;
-        if (anguloAtualF >= 120) {
-          anguloAtualF = 120;
-          indoDireita = false;
-        }
-      } else {
-        anguloAtualF -= passoAngulo;
-        if (anguloAtualF <= 60) {
-          anguloAtualF = 60;
-          indoDireita = true;
-        }
+  if (agora - tempoAnterior >= intervaloTempo) {
+    tempoAnterior = agora;
+
+    if (indoDireita) {
+      anguloAtual += passoAngulo;
+      if (anguloAtual >= 360) {
+        anguloAtual = 360;
+        indoDireita = false;
       }
-      motorServo.write((int)anguloAtualF);
+    } else {
+      anguloAtual -= passoAngulo;
+      if (anguloAtual <= 0) {
+        anguloAtual = 0;
+        indoDireita = true;
+      }
     }
+
+    motorServo.write(anguloAtual);  // Só funcionará se seu servo aceitar 360 graus
+    Serial.println(anguloAtual);    // Para você ver o valor no monitor serial
   }
+}
 }
